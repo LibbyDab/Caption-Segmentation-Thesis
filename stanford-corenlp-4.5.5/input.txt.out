@@ -1,0 +1,37 @@
+Document: ID=input.txt (1 sentences, 9 tokens)
+
+Sentence #1 (9 tokens):
+the quick brown fox jumped over the lazy dog
+
+Tokens:
+[Text=the CharacterOffsetBegin=0 CharacterOffsetEnd=3 PartOfSpeech=DT Lemma=the NamedEntityTag=O]
+[Text=quick CharacterOffsetBegin=4 CharacterOffsetEnd=9 PartOfSpeech=JJ Lemma=quick NamedEntityTag=O]
+[Text=brown CharacterOffsetBegin=10 CharacterOffsetEnd=15 PartOfSpeech=JJ Lemma=brown NamedEntityTag=O]
+[Text=fox CharacterOffsetBegin=16 CharacterOffsetEnd=19 PartOfSpeech=NN Lemma=fox NamedEntityTag=O]
+[Text=jumped CharacterOffsetBegin=20 CharacterOffsetEnd=26 PartOfSpeech=VBD Lemma=jump NamedEntityTag=O]
+[Text=over CharacterOffsetBegin=27 CharacterOffsetEnd=31 PartOfSpeech=IN Lemma=over NamedEntityTag=O]
+[Text=the CharacterOffsetBegin=32 CharacterOffsetEnd=35 PartOfSpeech=DT Lemma=the NamedEntityTag=O]
+[Text=lazy CharacterOffsetBegin=36 CharacterOffsetEnd=40 PartOfSpeech=JJ Lemma=lazy NamedEntityTag=O]
+[Text=dog CharacterOffsetBegin=41 CharacterOffsetEnd=44 PartOfSpeech=NN Lemma=dog NamedEntityTag=O]
+
+Constituency parse: 
+(ROOT
+  (S
+    (NP (DT the) (JJ quick) (JJ brown) (NN fox))
+    (VP (VBD jumped)
+      (PP (IN over)
+        (NP (DT the) (JJ lazy) (NN dog))))))
+
+
+Dependency Parse (enhanced plus plus dependencies):
+root(ROOT-0, jumped-5)
+det(fox-4, the-1)
+amod(fox-4, quick-2)
+amod(fox-4, brown-3)
+nsubj(jumped-5, fox-4)
+case(dog-9, over-6)
+det(dog-9, the-7)
+amod(dog-9, lazy-8)
+obl:over(jumped-5, dog-9)
+
+Extracted the following NER entity mentions:
