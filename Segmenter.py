@@ -1,8 +1,9 @@
 import os
-# from nltk.tokenize import sent_tokenize
+from nltk.tokenize import sent_tokenize
 from nltk.parse.corenlp import CoreNLPServer
 from nltk.parse.corenlp import CoreNLPParser
 from nltk.tree import *
+from nltk.tokenize.treebank import TreebankWordDetokenizer
 
 # start Core NLP Server
 STANFORD = os.path.join("stanford-corenlp-4.5.5")
@@ -49,28 +50,47 @@ def count_shared_parents(tree, words):
     #     print(key, ":", value)
     return shared_parents
 
-def syntax_segment(sentences, max_len):
-    for sentence in sentences:
-        # if sentence can fit on one line, leave as-is
-        if len(sentence) <= max_len:
-            print(sentence, len(sentence))
-        # else use syntax to identify break candidates with minimal shared parents
-        else:
-            parser = CoreNLPParser()
-            parse = next(parser.raw_parse(sentence))
-            words = parse.leaves()
-            # parse.pretty_print()
-            print('63:', parse.pos())
-            index, name = line_fill_index(words, max_len)
-            shared_parents = count_shared_parents(parse, words)
-            # break_candidates = sorted(shared_parents.items(), key=lambda x:x[1])
-            # for i in range(len(break_candidates)):
-            #     print(break_candidates[i])
-            #     index = int(break_candidates[i][0].split("_")[0])
-            #     sent1 = words[:index+1]
-            #     sent2 = words[index+1:]
-            #     print(break_candidates[i], ' '.join(sent1), '/', ' '.join(sent2))
+dont_split_leading = ['CC', 'CD', 'DT', 'IN', 'JJ']
+dont_split_trailing = ['"', '.', ',', ':']
 
-syntax_segment(["So thank you to Squarespace for sponsoring this video as I dive in to butter this time on Tasting History."], 32)
+def syntax_segment(sentence):
+    segments = []
+    # use syntax to identify break candidates with minimal shared parents
+    parser = CoreNLPParser()
+    parse = next(parser.raw_parse(sentence))
+    words = parse.leaves()
+    # parse.pretty_print()
+    pos_tags = parse.pos()
+    # index, name = line_fill_index(words, max_len)
+    break_candidates = count_shared_parents(parse, words)
+    for name in (break_candidates):
+        index = int(name.split("_")[0])
+        if pos_tags[index][1] in dont_split_leading:
+            break_candidates[name] = break_candidates.get(name) + 10
+        if pos_tags[index+1][1] in dont_split_trailing:
+            break_candidates[name] = break_candidates.get(name) + 10
+    # for key, value in break_candidates.items():
+    #     print(key, ":", value)
+    optimal_break_values = min(break_candidates.values())
+    optimal_break_index = [int(key.split("_")[0]) for key in break_candidates if break_candidates[key] == optimal_break_values]
+    start_caption_index = 0
+    for optimal_break in optimal_break_index:
+        segment = words[start_caption_index:optimal_break+1]
+        start_caption_index = optimal_break+1
+        segments.append(TreebankWordDetokenizer().detokenize(segment))
+    segments.append(TreebankWordDetokenizer().detokenize(words[start_caption_index:]))
+    return segments
+
+# sentences = ["As Julia Child once said with enough butter anything is good, and that is especially true with fresh butter, and so today I am going to hand churn some fresh butter."]
+
+with open('How to Make Old Fashioned Butter transcript.txt') as transcript:
+    sentences = sent_tokenize(transcript.read())
+    max_len = 32
+    while sentences:
+        if len(sentences[0]) < max_len:
+            print(sentences[0], len(sentences[0]))
+            sentences.pop(0)
+        else:
+            sentences = syntax_segment(sentences[0]) + sentences[1:]
 
 server.stop()
