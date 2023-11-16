@@ -1,5 +1,5 @@
 import os
-from nltk.tokenize import sent_tokenize
+from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.parse.corenlp import CoreNLPServer
 from nltk.parse.corenlp import CoreNLPParser
 from nltk.tree import *
@@ -13,20 +13,31 @@ server = CoreNLPServer(
 )
 server.start()
 
-# fill the line with the maximun number of words without going over the char. limit
-# return the index of the word right before the split and the key of the word pair for shared parents index_word1_word2
-def line_fill_index(words, max_len):
-    top_line = str()
-    index = -1
+# takes a list of words and cuts it to the maximun number of words without going over the character limit
+# returns the index of the word right after the split and the list keys of the word pairs in the line
+def line_fill(sentence, max_len, start_index):
+    words = sentence
+    end_index = 0
+    keys = []
+    line = str()
     for word in words:
-        if len(top_line) < max_len:
-            top_line += word + ' '
-            index += 1
+        if len(TreebankWordDetokenizer().detokenize([line, word])) <= max_len:
+            line = TreebankWordDetokenizer().detokenize([line, word])
+            end_index += 1
+            try:
+                key = '_'.join([str(start_index + end_index - 1), words[end_index-1], words[end_index]])
+                keys.append(key)
+            except IndexError:
+                keys.append('end_of_sent')
         else:
             break
-    # print(top_line)
-    key = '_'.join([str(index), words[index], words[index+1]])
-    return index, key
+    return end_index, keys
+
+# sentence = "I saw the light."
+# parser = CoreNLPParser()
+# parse = next(parser.raw_parse(sentence))
+# words = parse.leaves()
+# print(line_fill(words, max_len=32))
 
 # for every consecutive word pair, count the number of shared parents
 # return as a dictionary {index_word1_word2 : num of shared parents}
@@ -50,47 +61,69 @@ def count_shared_parents(tree, words):
     #     print(key, ":", value)
     return shared_parents
 
-dont_split_leading = ['CC', 'CD', 'DT', 'IN', 'JJ']
-dont_split_trailing = ['"', '.', ',', ':']
+# lists of POS rules
+dont_split_after = ['$', 'CC', 'DT', 'TO', 'IN', 'RB', 'RBR', 'RBS', 'PDT', 'WDT']
+dont_split_before = ['.', ',', ':', '%', 'POS', "'s", "'re", "'t", "'ll", "'d", "'ve", "'m", "n't"]
+dont_split_between = {'JJ': ['NNS', 'NN', 'NNP', 'NNPS'], 'DT' : ['NNS', 'NN', 'NNP', 'NNPS']}
+split_leading = ['.', ',', ':']
 
-def syntax_segment(sentence):
-    segments = []
-    # use syntax to identify break candidates with minimal shared parents
+def syntax_segment(sentence, max_len):
     parser = CoreNLPParser()
     parse = next(parser.raw_parse(sentence))
     words = parse.leaves()
     # parse.pretty_print()
     pos_tags = parse.pos()
-    # index, name = line_fill_index(words, max_len)
+    # print(pos_tags)
+
+    # find number of shared parents for each word pair
     break_candidates = count_shared_parents(parse, words)
+
+    # apply POS rules as listed above
     for name in (break_candidates):
         index = int(name.split("_")[0])
-        if pos_tags[index][1] in dont_split_leading:
+        if pos_tags[index][1] in dont_split_after:
             break_candidates[name] = break_candidates.get(name) + 10
-        if pos_tags[index+1][1] in dont_split_trailing:
+        if pos_tags[index][1] in split_leading:
+            break_candidates[name] = break_candidates.get(name) - 10
+        if pos_tags[index+1][1] in dont_split_before or words[index+1] in dont_split_before:
             break_candidates[name] = break_candidates.get(name) + 10
-    # for key, value in break_candidates.items():
-    #     print(key, ":", value)
-    optimal_break_values = min(break_candidates.values())
-    optimal_break_index = [int(key.split("_")[0]) for key in break_candidates if break_candidates[key] == optimal_break_values]
-    start_caption_index = 0
-    for optimal_break in optimal_break_index:
-        segment = words[start_caption_index:optimal_break+1]
-        start_caption_index = optimal_break+1
-        segments.append(TreebankWordDetokenizer().detokenize(segment))
-    segments.append(TreebankWordDetokenizer().detokenize(words[start_caption_index:]))
-    return segments
 
-# sentences = ["As Julia Child once said with enough butter anything is good, and that is especially true with fresh butter, and so today I am going to hand churn some fresh butter."]
+    segments = []
+    start_index = 0
+    while words:
+        end_index, keys = line_fill(words, max_len, start_index)
+        possible_breaks = {}
+        for key in keys:
+            try:
+                possible_breaks[key] = break_candidates[key]
+            except KeyError as e:
+                if e.args[0] == 'end_of_sent':
+                    segment = TreebankWordDetokenizer().detokenize(words)
+                    segments.append(segment)
+                    return segments
+        optimal_break_value = min(possible_breaks.values())
+        optimal_break_key = [key for key in possible_breaks if possible_breaks[key] == optimal_break_value]
+        optimal_break_index = (int(optimal_break_key[-1].split("_")[0]))
 
-with open('How to Make Old Fashioned Butter transcript.txt') as transcript:
+        segment = TreebankWordDetokenizer().detokenize(words[:optimal_break_index-start_index+1])
+        segments.append(segment)
+
+        words = words[optimal_break_index-start_index+1:]
+        start_index = optimal_break_index+1
+
+caption_file = open('How to Make Old Fashioned Butter captions.txt', 'w')
+with open('How to Make Old Fashioned Butter transcript.txt', 'r') as transcript:
     sentences = sent_tokenize(transcript.read())
     max_len = 32
+    segments = []
     while sentences:
-        if len(sentences[0]) < max_len:
-            print(sentences[0], len(sentences[0]))
-            sentences.pop(0)
+        if len(sentences[0]) > max_len:
+            lines = syntax_segment(sentences[0], max_len)
         else:
-            sentences = syntax_segment(sentences[0]) + sentences[1:]
+            lines = [sentences[0]]
+        for line in lines:
+            caption_file.write(line + ' ' + str(len(line)) + '\n')
+        sentences.pop(0)
+    caption_file.close()
 
 server.stop()
