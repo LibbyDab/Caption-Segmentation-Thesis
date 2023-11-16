@@ -33,12 +33,6 @@ def line_fill(sentence, max_len, start_index):
             break
     return end_index, keys
 
-# sentence = "I saw the light."
-# parser = CoreNLPParser()
-# parse = next(parser.raw_parse(sentence))
-# words = parse.leaves()
-# print(line_fill(words, max_len=32))
-
 # for every consecutive word pair, count the number of shared parents
 # return as a dictionary {index_word1_word2 : num of shared parents}
 def count_shared_parents(tree, words):
@@ -62,8 +56,8 @@ def count_shared_parents(tree, words):
     return shared_parents
 
 # lists of POS rules
-dont_split_after = ['$', 'CC', 'DT', 'TO', 'IN', 'RB', 'RBR', 'RBS', 'PDT', 'WDT']
-dont_split_before = ['.', ',', ':', '%', 'POS', "'s", "'re", "'t", "'ll", "'d", "'ve", "'m", "n't"]
+dont_split_after = ['$', '-', 'CC', 'DT', 'TO', 'IN', 'RB', 'RBR', 'RBS', 'PDT', 'WDT']
+dont_split_before = ['.', ',', ':', '-', '%', 'POS', "'s", "'re", "'t", "'ll", "'d", "'ve", "'m", "n't"]
 dont_split_between = {'JJ': ['NNS', 'NN', 'NNP', 'NNPS'], 'DT' : ['NNS', 'NN', 'NNP', 'NNPS']}
 split_leading = ['.', ',', ':']
 
@@ -82,11 +76,11 @@ def syntax_segment(sentence, max_len):
     for name in (break_candidates):
         index = int(name.split("_")[0])
         if pos_tags[index][1] in dont_split_after:
-            break_candidates[name] = break_candidates.get(name) + 10
+            break_candidates[name] = break_candidates.get(name) + 5
         if pos_tags[index][1] in split_leading:
-            break_candidates[name] = break_candidates.get(name) - 10
+            break_candidates[name] = break_candidates.get(name) - 5
         if pos_tags[index+1][1] in dont_split_before or words[index+1] in dont_split_before:
-            break_candidates[name] = break_candidates.get(name) + 10
+            break_candidates[name] = break_candidates.get(name) + 5
 
     segments = []
     start_index = 0
@@ -111,8 +105,8 @@ def syntax_segment(sentence, max_len):
         words = words[optimal_break_index-start_index+1:]
         start_index = optimal_break_index+1
 
-caption_file = open('How to Make Old Fashioned Butter captions.txt', 'w')
-with open('How to Make Old Fashioned Butter transcript.txt', 'r') as transcript:
+caption_file = open('test captions.txt', 'w')
+with open('test transcript.txt', 'r') as transcript:
     sentences = sent_tokenize(transcript.read())
     max_len = 32
     segments = []
@@ -121,8 +115,23 @@ with open('How to Make Old Fashioned Butter transcript.txt', 'r') as transcript:
             lines = syntax_segment(sentences[0], max_len)
         else:
             lines = [sentences[0]]
-        for line in lines:
-            caption_file.write(line + ' ' + str(len(line)) + '\n')
+        line_num = 1
+        while lines:
+            try:
+                if len(TreebankWordDetokenizer().detokenize([lines[0], lines[1]])) <= max_len:
+                    lines[1] = TreebankWordDetokenizer().detokenize([lines[0], lines[1]])
+                    lines.pop(0)
+                    continue
+                else:
+                    pass
+            except IndexError:
+                pass
+            if line_num % 2 == 0 or len(lines) == 1:
+                caption_file.write(lines[0] + ' ' + str(len(lines[0])) + '\n' + '\n')
+            else:
+                caption_file.write(lines[0] + ' ' + str(len(lines[0])) + '\n')
+            lines.pop(0)
+            line_num += 1
         sentences.pop(0)
     caption_file.close()
 
