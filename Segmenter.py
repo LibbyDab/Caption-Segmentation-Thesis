@@ -13,6 +13,30 @@ server = CoreNLPServer(
 )
 server.start()
 
+# custom detokenization of a list of strings to handle hyphens
+def custom_detokenize(tokens):
+    while len(tokens) > 1:
+        # detect and correct parentheses in text
+        # if tokens[0] == '-LRB-':
+        #     tokens[0] = '(' + tokens[1]
+        # elif tokens[1] == '-LRB-':
+        #     tokens[0] = tokens[0] + ' ('
+        # elif tokens[0] == '-RRB-':
+        #     tokens[0] = ')' + tokens[1]
+        # elif tokens[1] == '-RRB-':
+        #     tokens[0] = tokens[0] + ')'
+        try:
+            # detect hyphens and fix spacing
+            if tokens[0][-1] == '-' or tokens[1] == '-':
+                tokens[0] = tokens[0] + tokens[1]
+        except IndexError:
+            tokens[0] = TreebankWordDetokenizer().detokenize([tokens[0], tokens[1]])
+        # print(tokens)
+        else:
+            tokens[0] = TreebankWordDetokenizer().detokenize([tokens[0], tokens[1]])
+        tokens.pop(1)
+    return tokens[0]
+
 # takes a list of words and cuts it to the maximun number of words without going over the character limit
 # returns the index of the word right after the split and the list keys of the word pairs in the line
 def line_fill(sentence, max_len, start_index):
@@ -21,8 +45,8 @@ def line_fill(sentence, max_len, start_index):
     keys = []
     line = str()
     for word in words:
-        if len(TreebankWordDetokenizer().detokenize([line, word])) <= max_len:
-            line = TreebankWordDetokenizer().detokenize([line, word])
+        if len(custom_detokenize([line, word])) <= max_len:
+            line = custom_detokenize([line, word])
             end_index += 1
             try:
                 key = '_'.join([str(start_index + end_index - 1), words[end_index-1], words[end_index]])
@@ -56,10 +80,10 @@ def count_shared_parents(tree, words):
     return shared_parents
 
 # lists of POS rules
-dont_split_after = ['$', '-', 'CC', 'DT', 'TO', 'IN', 'RB', 'RBR', 'RBS', 'PDT', 'WDT']
-dont_split_before = ['.', ',', ':', '-', '%', 'POS', "'s", "'re", "'t", "'ll", "'d", "'ve", "'m", "n't"]
-dont_split_between = {'JJ': ['NNS', 'NN', 'NNP', 'NNPS'], 'DT' : ['NNS', 'NN', 'NNP', 'NNPS']}
-split_leading = ['.', ',', ':']
+contractions = ["'s", "'re", "'t", "'ll", "'d", "'ve", "'m", "n't"]
+dont_split_after = ['$', '-LRB-', 'DT', 'PDT', 'WDT', 'TO', 'CC', 'IN']
+dont_split_before = ['.', ',', ':', '-RRB-']
+dont_split_between = {'JJ': ['JJ', 'CD', 'NNS', 'NN', 'NNP', 'NNPS'], 'DT' : ['NNS', 'NN', 'NNP', 'NNPS']}
 
 def syntax_segment(sentence, max_len):
     parser = CoreNLPParser()
@@ -72,15 +96,32 @@ def syntax_segment(sentence, max_len):
     # find number of shared parents for each word pair
     break_candidates = count_shared_parents(parse, words)
 
-    # apply POS rules as listed above
+    # apply penalty for breaking rules
     for name in (break_candidates):
         index = int(name.split("_")[0])
+        # don't break within words (contractions, possessive endings, hyphenated words)
+        if words[index+1] in contractions or \
+        pos_tags[index+1][1] == 'POS' or \
+        pos_tags[index][1] == 'HYPH' or \
+        pos_tags[index+1][1] == 'HYPH':
+            break_candidates[name] = break_candidates.get(name) + 10
+        # don't break after certain symbols or parts-of-speech (articles, conjunctions, prepositions, infinitive to)
         if pos_tags[index][1] in dont_split_after:
-            break_candidates[name] = break_candidates.get(name) + 5
-        if pos_tags[index][1] in split_leading:
-            break_candidates[name] = break_candidates.get(name) - 5
-        if pos_tags[index+1][1] in dont_split_before or words[index+1] in dont_split_before:
-            break_candidates[name] = break_candidates.get(name) + 5
+            break_candidates[name] = break_candidates.get(name) + 10
+        # don't break before certain symbols
+        if pos_tags[index+1][1] in dont_split_before:
+            break_candidates[name] = break_candidates.get(name) + 10
+        # do break after certain symbols
+        if pos_tags[index][1] in dont_split_before:
+            break_candidates[name] = break_candidates.get(name) -10
+        # don't split between certain part-of-speech pairs
+        if pos_tags[index][1] in dont_split_between.keys():
+            if pos_tags[index+1][1] in dont_split_between[pos_tags[index][1]]:
+                break_candidates[name] = break_candidates.get(name) + 10
+
+    # print("Cost for splitting word pair:")
+    # for key, value in break_candidates.items():
+    #     print(key, ":", value)
 
     segments = []
     start_index = 0
@@ -92,14 +133,14 @@ def syntax_segment(sentence, max_len):
                 possible_breaks[key] = break_candidates[key]
             except KeyError as e:
                 if e.args[0] == 'end_of_sent':
-                    segment = TreebankWordDetokenizer().detokenize(words)
+                    segment = custom_detokenize(words)
                     segments.append(segment)
                     return segments
         optimal_break_value = min(possible_breaks.values())
         optimal_break_key = [key for key in possible_breaks if possible_breaks[key] == optimal_break_value]
         optimal_break_index = (int(optimal_break_key[-1].split("_")[0]))
 
-        segment = TreebankWordDetokenizer().detokenize(words[:optimal_break_index-start_index+1])
+        segment = custom_detokenize(words[:optimal_break_index-start_index+1])
         segments.append(segment)
 
         words = words[optimal_break_index-start_index+1:]
@@ -116,10 +157,12 @@ with open('test transcript.txt', 'r') as transcript:
         else:
             lines = [sentences[0]]
         line_num = 1
+        # for line in lines:
+        #     print(line, len(line))
         while lines:
             try:
-                if len(TreebankWordDetokenizer().detokenize([lines[0], lines[1]])) <= max_len:
-                    lines[1] = TreebankWordDetokenizer().detokenize([lines[0], lines[1]])
+                if len(custom_detokenize([lines[0], lines[1]])) <= max_len:
+                    lines[1] = custom_detokenize([lines[0], lines[1]])
                     lines.pop(0)
                     continue
                 else:
