@@ -13,7 +13,7 @@ server = CoreNLPServer(
 )
 server.start()
 
-# custom detokenization of a list of strings to handle hyphens
+# custom detokenization of a list of strings to handle issues
 def custom_detokenize(tokens):
     while len(tokens) > 1:
         # detect and correct parentheses in text
@@ -33,13 +33,14 @@ def custom_detokenize(tokens):
         tokens.pop(1)
     return tokens[0]
 
-# takes a list of words and cuts it to the maximun number of words without going over the character limit
+# takes a list of words and cuts it to one over the maximun number of words without going over the character limit
 # returns the index of the word right after the split and the list keys of the word pairs in the line
 def line_fill(sentence, max_len, start_index):
     words = sentence
     end_index = 0
     keys = []
     line = words[0]
+    end_of_sent = True
     for i in range(1, len(words)):
         line = custom_detokenize([line, words[i]])
         key = '_'.join([str(start_index + end_index), words[end_index], words[end_index+1]])
@@ -48,10 +49,11 @@ def line_fill(sentence, max_len, start_index):
         if len(line) <= max_len:
             continue
         else:
+            end_of_sent = False
             break
-    if len(words) == 1:
+    if len(words) == 1 or end_of_sent:
         keys.append('end_of_sent')
-    return end_index, keys
+    return keys
 
 # for every consecutive word pair, count the number of shared parents
 # return as a dictionary {index_word1_word2 : num of shared parents}
@@ -85,14 +87,22 @@ dont_split_between = {'JJ': ['JJ', 'JJR', 'JJS', 'CD', 'NNS', 'NN', 'NNP', 'NNPS
                       'RB' : ['RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'JJ', 'JJR', 'JJS',],
                       'RBR' : ['RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'JJ', 'JJR', 'JJS',],
                       'RBS' : ['RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'JJ', 'JJR', 'JJS',],
-                      'PRP' : ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ'],
-                      'NNP' : ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']}
+                      'VBZ' : ['VBG', 'VBN'],
+                      'VBD' : ['VBG', 'VBN'],
+                      'VBP' : ['VBG', 'VBN'],
+                      'VB' : ['VBG', 'VBN'],
+                      'VBN' : ['VBG'],
+                      'VBG' : ['TO'],
+                      'MD' : ['VB']
+                      }
+do_split_before = {'WRB'}
+do_split_after = {',', ':'}
 
 def syntax_segment(sentence, max_len):
     parser = CoreNLPParser()
     parse = next(parser.raw_parse(sentence))
     words = parse.leaves()
-    parse.pretty_print()
+    # parse.pretty_print()
     pos_tags = parse.pos()
     print(pos_tags)
 
@@ -102,59 +112,73 @@ def syntax_segment(sentence, max_len):
     # apply penalty for breaking rules
     for name in (break_candidates):
         index = int(name.split("_")[0])
-        # don't break within words (contractions, possessive endings, hyphenated words)
+        # don't break within words
         if words[index+1] in contractions or \
         pos_tags[index+1][1] == 'POS' or \
         pos_tags[index][1] == 'HYPH' or \
         pos_tags[index+1][1] == 'HYPH':
-            break_candidates[name] = break_candidates.get(name) + 10
-        # don't break after certain symbols or parts-of-speech (articles, conjunctions, prepositions, infinitive to)
+            break_candidates[name] = break_candidates.get(name) + 20
+        # don't break after certain symbols or parts-of-speech
         if pos_tags[index][1] in dont_split_after:
             break_candidates[name] = break_candidates.get(name) + 10
-        # don't break before certain symbols
+        # don't break before end punctuation
         if pos_tags[index+1][1] in dont_split_before:
-            break_candidates[name] = break_candidates.get(name) + 15
-        # don't split between certain part-of-speech pairs
+            break_candidates[name] = break_candidates.get(name) + 20
+        # discourage split between certain part-of-speech pairs
         if pos_tags[index][1] in dont_split_between.keys():
             if pos_tags[index+1][1] in dont_split_between[pos_tags[index][1]]:
                 break_candidates[name] = break_candidates.get(name) + 5
-
-    print("Cost for splitting word pair:")
-    for key, value in break_candidates.items():
-        print(key, ":", value)
-
+        # encourage split after certain punctuation
+        if pos_tags[index][1] in do_split_after:
+            break_candidates[name] = break_candidates.get(name) - 5
+        # encourage split before certain parts-of-speech
+        if pos_tags[index+1][1] in do_split_before:
+            break_candidates[name] = break_candidates.get(name) - 5
+    
     segments = []
     start_index = 0
     while words:
-        end_index, keys = line_fill(words, max_len, start_index)
+        keys = line_fill(words, max_len, start_index)
         possible_breaks = {}
-        for key in keys:
-            try:
-                possible_breaks[key] = break_candidates[key]
-            except KeyError as e:
-                if e.args[0] == 'end_of_sent':
-                    segment = custom_detokenize(words)
-                    segments.append(segment)
-                    # print(segments)
-                    return segments
-        optimal_break_value = min(possible_breaks.values())
-        optimal_break_key = [key for key in possible_breaks if possible_breaks[key] == optimal_break_value]
-        optimal_break_index = (int(optimal_break_key[-1].split("_")[0]))
+        try:
+            for i in range(len(keys)):
+                possible_breaks[keys[i]] = break_candidates[keys[i]] + (len(keys)-i)
+        except KeyError as e:
+            if e.args[0] == 'end_of_sent':
+                segment = custom_detokenize(words)
+                segments.append(segment)
+                print(segments)
+                return segments
+
+        print("Cost for splitting word pair:")
+        for key, value in possible_breaks.items():
+            print(key, ":", value)
+        
+        if len(possible_breaks) == 1:
+            optimal_break_index = int(list(possible_breaks.keys())[0].split("_")[0]) + 1
+        else:
+            optimal_break_value = min(possible_breaks.values())
+            optimal_break_key = [key for key in possible_breaks if possible_breaks[key] == optimal_break_value]
+            optimal_break_index = int(optimal_break_key[-1].split("_")[0])
 
         segment = custom_detokenize(words[:optimal_break_index-start_index+1])
         segments.append(segment)
 
         words = words[optimal_break_index-start_index+1:]
         start_index = optimal_break_index+1
+    
+    print(segments)
+    return segments
 
-caption_file = open('test captions.txt', 'w')
-with open('test transcript.txt', 'r') as transcript:
+caption_file = open('Baby Platypus Caught on Camera captions.txt', 'w')
+with open('Baby Platypus Caught on Camera transcript.txt', 'r') as transcript:
     lines = transcript.readlines()
     sentences = []
     for line in lines:
         sentences.extend(sent_tokenize(line))
     max_len = 32
     segments = []
+    caption_number = 1
     while sentences:
         if len(sentences[0]) > max_len:
             # print('\n', sentences[0])
@@ -171,8 +195,7 @@ with open('test transcript.txt', 'r') as transcript:
                     pass
                 elif lines[1][0] in ['(', '{', '[']:
                     pass
-                elif len(lines[0]) + len(lines[1]) + 1 <= max_len:
-                # elif len(custom_detokenize([lines[0], lines[1]])) <= max_len:
+                elif len(custom_detokenize([lines[0], lines[1]])) <= max_len:
                     lines[1] = custom_detokenize([lines[0], lines[1]])
                     lines.pop(0)
                     continue
@@ -180,10 +203,16 @@ with open('test transcript.txt', 'r') as transcript:
                     pass
             except IndexError:
                 pass
-            if line_num % 2 == 0 or len(lines) == 1:
-                caption_file.write(lines[0] + ' ' + str(len(lines[0])) + '\n' + '\n')
+            if line_num % 2 == 0:
+                caption_file.write(lines[0] + '\n' + '\n')
+                caption_number += 1
+            elif len(lines) == 1: 
+                caption_file.write(str(caption_number) + '\n' + '\n')
+                caption_file.write(lines[0] + '\n' + '\n')
+                caption_number += 1
             else:
-                caption_file.write(lines[0] + ' ' + str(len(lines[0])) + '\n')
+                caption_file.write(str(caption_number) + '\n' + '\n')
+                caption_file.write(lines[0] + '\n')
             lines.pop(0)
             line_num += 1
     caption_file.close()
