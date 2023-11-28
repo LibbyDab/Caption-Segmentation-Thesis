@@ -150,9 +150,9 @@ def syntax_segment(sentence, max_len):
                 print(segments)
                 return segments
 
-        print("Cost for splitting word pair:")
-        for key, value in possible_breaks.items():
-            print(key, ":", value)
+        # print("Cost for splitting word pair:")
+        # for key, value in possible_breaks.items():
+        #     print(key, ":", value)
         
         if len(possible_breaks) == 1:
             optimal_break_index = int(list(possible_breaks.keys())[0].split("_")[0]) + 1
@@ -167,7 +167,7 @@ def syntax_segment(sentence, max_len):
         words = words[optimal_break_index-start_index+1:]
         start_index = optimal_break_index+1
     
-    print(segments)
+    # print(segments)
     return segments
 
 caption_file = open('Baby Platypus Caught on Camera captions.txt', 'w')
