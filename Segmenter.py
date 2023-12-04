@@ -87,11 +87,11 @@ dont_split_between = {'JJ': ['JJ', 'JJR', 'JJS', 'CD', 'NNS', 'NN', 'NNP', 'NNPS
                       'RB' : ['RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'JJ', 'JJR', 'JJS',],
                       'RBR' : ['RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'JJ', 'JJR', 'JJS',],
                       'RBS' : ['RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'JJ', 'JJR', 'JJS',],
-                      'VBZ' : ['VBG', 'VBN'],
-                      'VBD' : ['VBG', 'VBN'],
-                      'VBP' : ['VBG', 'VBN'],
-                      'VB' : ['VBG', 'VBN'],
-                      'VBN' : ['VBG'],
+                      'VBZ' : ['VBG', 'VBN', 'TO'],
+                      'VBD' : ['VBG', 'VBN', 'TO'],
+                      'VBP' : ['VBG', 'VBN', 'TO'],
+                      'VB' : ['VBG', 'VBN', 'TO'],
+                      'VBN' : ['VBG', 'TO'],
                       'VBG' : ['TO'],
                       'MD' : ['VB']
                       }
@@ -104,7 +104,7 @@ def syntax_segment(sentence, max_len):
     words = parse.leaves()
     # parse.pretty_print()
     pos_tags = parse.pos()
-    print(pos_tags)
+    # print(pos_tags)
 
     # find number of shared parents for each word pair
     break_candidates = count_shared_parents(parse, words)
@@ -147,7 +147,7 @@ def syntax_segment(sentence, max_len):
             if e.args[0] == 'end_of_sent':
                 segment = custom_detokenize(words)
                 segments.append(segment)
-                print(segments)
+                # print(segments)
                 return segments
 
         # print("Cost for splitting word pair:")
@@ -170,13 +170,13 @@ def syntax_segment(sentence, max_len):
     # print(segments)
     return segments
 
-caption_file = open('Baby Platypus Caught on Camera captions.txt', 'w')
-with open('Baby Platypus Caught on Camera transcript.txt', 'r') as transcript:
+caption_file = open('BBC Deep Ocean System Captions.txt', 'w')
+with open('BBC Deep Ocean Transcript.txt', 'r') as transcript:
     lines = transcript.readlines()
     sentences = []
     for line in lines:
         sentences.extend(sent_tokenize(line))
-    max_len = 32
+    max_len = 37
     segments = []
     caption_number = 1
     while sentences:
@@ -207,11 +207,11 @@ with open('Baby Platypus Caught on Camera transcript.txt', 'r') as transcript:
                 caption_file.write(lines[0] + '\n' + '\n')
                 caption_number += 1
             elif len(lines) == 1: 
-                caption_file.write(str(caption_number) + '\n' + '\n')
+                caption_file.write(str(caption_number) + '\n')
                 caption_file.write(lines[0] + '\n' + '\n')
                 caption_number += 1
             else:
-                caption_file.write(str(caption_number) + '\n' + '\n')
+                caption_file.write(str(caption_number) + '\n')
                 caption_file.write(lines[0] + '\n')
             lines.pop(0)
             line_num += 1
