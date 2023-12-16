@@ -170,13 +170,13 @@ def syntax_segment(sentence, max_len):
     # print(segments)
     return segments
 
-caption_file = open('BBC Deep Ocean System Captions.txt', 'w')
-with open('BBC Deep Ocean Transcript.txt', 'r') as transcript:
+caption_file = open('NatGeo The Barking Deer System Captions.txt', 'w')
+with open('NatGeo The Barking Deer Transcript.txt', 'r') as transcript:
     lines = transcript.readlines()
     sentences = []
     for line in lines:
         sentences.extend(sent_tokenize(line))
-    max_len = 37
+    max_len = 32
     segments = []
     caption_number = 1
     while sentences:
