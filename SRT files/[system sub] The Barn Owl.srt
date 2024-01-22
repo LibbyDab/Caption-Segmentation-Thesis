@@ -74,8 +74,8 @@ while hunting and will hover
 
 16
 00:01:01,700 --> 00:01:04,290
-over spots
-where prey might be hiding.
+over spots where prey
+might be hiding.
 
 17
 00:01:04,320 --> 00:01:06,343
