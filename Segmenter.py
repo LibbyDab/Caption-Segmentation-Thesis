@@ -1,5 +1,5 @@
 import os
-from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.tokenize import sent_tokenize
 from nltk.parse.corenlp import CoreNLPServer
 from nltk.parse.corenlp import CoreNLPParser
 from nltk.tree import *
@@ -79,7 +79,7 @@ def count_shared_parents(tree, words):
 
 # lists of POS rules
 contractions = ["'s", "'re", "'t", "'ll", "'d", "'ve", "'m", "n't"]
-dont_split_after = ['$', '-LRB-', 'DT', 'PDT', 'WDT', 'TO', 'CC', 'IN']
+dont_split_after = ['$', '-LRB-', 'DT', 'PDT', 'WDT', 'TO', 'CC', 'IN', 'PRP$', 'POS']
 dont_split_before = ['.', ',', ':', '-RRB-']
 dont_split_between = {'JJ': ['JJ', 'JJR', 'JJS', 'CD', 'NNS', 'NN', 'NNP', 'NNPS'], 
                       'JJR': ['JJ', 'JJR', 'JJS', 'CD', 'NNS', 'NN', 'NNP', 'NNPS'], 
@@ -87,15 +87,14 @@ dont_split_between = {'JJ': ['JJ', 'JJR', 'JJS', 'CD', 'NNS', 'NN', 'NNP', 'NNPS
                       'RB' : ['RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'JJ', 'JJR', 'JJS',],
                       'RBR' : ['RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'JJ', 'JJR', 'JJS',],
                       'RBS' : ['RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'JJ', 'JJR', 'JJS',],
-                      'VBZ' : ['VBG', 'VBN', 'TO'],
-                      'VBD' : ['VBG', 'VBN', 'TO'],
-                      'VBP' : ['VBG', 'VBN', 'TO'],
-                      'VB' : ['VBG', 'VBN', 'TO'],
-                      'VBN' : ['VBG', 'TO'],
-                      'VBG' : ['TO'],
-                      'MD' : ['VB']
+                      'VBZ' : ['VBG', 'VBN', 'TO', 'RB', 'RBR', 'RBS'],
+                      'VBD' : ['VBG', 'VBN', 'TO', 'RB', 'RBR', 'RBS'],
+                      'VBP' : ['VBG', 'VBN', 'TO', 'RB', 'RBR', 'RBS'],
+                      'VB' : ['VBG', 'VBN', 'TO', 'RB', 'RBR', 'RBS'],
+                      'VBN' : ['VBG', 'TO', 'RB', 'RBR', 'RBS'],
+                      'VBG' : ['TO', 'RB', 'RBR', 'RBS'],
+                      'MD' : ['VB', 'RB', 'RBR', 'RBS']
                       }
-do_split_before = {'WRB'}
 do_split_after = {',', ':'}
 
 def syntax_segment(sentence, max_len):
@@ -131,10 +130,11 @@ def syntax_segment(sentence, max_len):
         # encourage split after certain punctuation
         if pos_tags[index][1] in do_split_after:
             break_candidates[name] = break_candidates.get(name) - 5
-        # encourage split before certain parts-of-speech
-        if pos_tags[index+1][1] in do_split_before:
-            break_candidates[name] = break_candidates.get(name) - 5
     
+    # print("Cost for splitting word pair:")
+    # for key, value in possible_breaks.items():
+    #     print(key, ":", value)
+        
     segments = []
     start_index = 0
     while words:
@@ -142,7 +142,7 @@ def syntax_segment(sentence, max_len):
         possible_breaks = {}
         try:
             for i in range(len(keys)):
-                possible_breaks[keys[i]] = break_candidates[keys[i]] + (len(keys)-i)
+                possible_breaks[keys[i]] = break_candidates[keys[i]]
         except KeyError as e:
             if e.args[0] == 'end_of_sent':
                 segment = custom_detokenize(words)
@@ -150,10 +150,6 @@ def syntax_segment(sentence, max_len):
                 # print(segments)
                 return segments
 
-        # print("Cost for splitting word pair:")
-        # for key, value in possible_breaks.items():
-        #     print(key, ":", value)
-        
         if len(possible_breaks) == 1:
             optimal_break_index = int(list(possible_breaks.keys())[0].split("_")[0]) + 1
         else:
